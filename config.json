@@ -1,0 +1,9 @@
+{
+  "ldapBaseDN": "dc=example,dc=com",
+  "adminDN": "cn=admin,dc=example,dc=com",
+  "adminPass": "adminpassword",
+  "ldapURL": "ldap://localhost:389",
+  "userOU": "ou=people",
+  "groupOU": "ou=groups",
+  "DomainMail": "example.com"
+}
