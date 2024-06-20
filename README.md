@@ -4,13 +4,13 @@
 确保在编译后的执行文件目录中有 `config.json` 文件, 示例内容如下:
 ```json
 {
-  "ldapBaseDN": "dc=example,dc=com", // LDAP BaseDN
-  "adminDN": "cn=admin,dc=example,dc=com", // LDAP管理员DN
-  "adminPass": "adminpassword", // LDAP管理员密码
-  "ldapURL": "ldap://localhost:389", // LDAP URL
-  "userOU": "ou=people", // 用户OU
-  "groupOU": "ou=groups",  // 组OU
-  "DomainMail": "example.com" // 邮箱域名
+  "ldapBaseDN": "dc=example,dc=com",
+  "adminDN": "cn=admin,dc=example,dc=com",
+  "adminPass": "adminpassword",
+  "ldapURL": "ldap://localhost:389",
+  "userOU": "ou=people",
+  "groupOU": "ou=groups",
+  "DomainMail": "example.com"
 }
 ```
 ## 编译为可执行文件
