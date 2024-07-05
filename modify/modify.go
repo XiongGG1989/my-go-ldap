@@ -11,6 +11,35 @@ import (
 	"github.com/go-ldap/ldap/v3"
 )
 
+type UserDNFetcher interface {
+	FetchUserDN(conn *ldap.Conn, username string) (string, error)
+}
+
+type LDAPUserDNFetcher struct {
+	Config *conn.Config
+}
+
+func (f *LDAPUserDNFetcher) FetchUserDN(conn *ldap.Conn, username string) (string, error) {
+	searchRequest := ldap.NewSearchRequest(
+		f.Config.LDAPBaseDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(uid=%s)", username),
+		[]string{"dn"},
+		nil,
+	)
+
+	sr, err := conn.Search(searchRequest)
+	if err != nil {
+		return "", fmt.Errorf("搜索用户失败: %v", err)
+	}
+
+	if len(sr.Entries) == 0 {
+		return "", fmt.Errorf("未找到用户")
+	}
+
+	return sr.Entries[0].DN, nil
+}
+
 // ModifyUserPassword 修改用户的密码
 func hashPasswordSHA(password string) (string, error) {
 	hash := sha1.New()
@@ -23,36 +52,17 @@ func hashPasswordSHA(password string) (string, error) {
 	return fmt.Sprintf("{SHA}%s", encodedPassword), nil
 }
 
-func ModifyUserPassword(config *conn.Config, username, newPassword string) error {
+func ModifyUserPassword(f UserDNFetcher, config *conn.Config, username, newPassword string) error {
 	conn, err := conn.GetLDAPConnection(config)
 	if err != nil {
 		return fmt.Errorf("连接 LDAP 时出错: %v", err)
 	}
 	defer conn.Close()
 
-	// 设置搜索请求以获取用户的 DN
-	searchRequest := ldap.NewSearchRequest(
-		config.LDAPBaseDN, // 搜索的Base DN
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(uid=%s)", username), // 搜索过滤器
-		[]string{"dn"},                    // 只检索 DN
-		nil,
-	)
-
-	// 执行搜索请求
-	sr, err := conn.Search(searchRequest)
+	userDN, err := f.FetchUserDN(conn, username)
 	if err != nil {
-		return fmt.Errorf("搜索用户失败: %v", err)
+		return fmt.Errorf("获取用户 DN 失败: %v", err)
 	}
-
-	// 检查搜索结果
-	if len(sr.Entries) == 0 {
-		return fmt.Errorf("未找到用户")
-	}
-
-	// 获取用户的 DN
-	userDN := sr.Entries[0].DN
-
 	// 对新密码进行哈希处理
 	hashedPassword, err := hashPasswordSHA(newPassword)
 	if err != nil {
@@ -72,40 +82,22 @@ func ModifyUserPassword(config *conn.Config, username, newPassword string) error
 }
 
 // 增加用户的属性或者属性值
-func AddUserattrName(config *conn.Config, username string, attrName string, values []string) error {
+func AddUserattrName(f UserDNFetcher, config *conn.Config, username string, attrName string, values []string) error {
 	conn, err := conn.GetLDAPConnection(config)
 	if err != nil {
 		return fmt.Errorf("连接 LDAP 时出错: %v", err)
 	}
 	defer conn.Close()
 
-	// 设置搜索请求以获取用户的 DN
-	searchRequest := ldap.NewSearchRequest(
-		config.LDAPBaseDN, // 搜索的Base DN
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(uid=%s)", username), // 搜索过滤器
-		[]string{"dn"},                    // 只检索 DN
-		nil,
-	)
-
-	// 执行搜索请求
-	sr, err := conn.Search(searchRequest)
+	userDN, err := f.FetchUserDN(conn, username)
 	if err != nil {
-		return fmt.Errorf("搜索用户失败: %v", err)
+		return fmt.Errorf("获取用户 DN 失败: %v", err)
 	}
-
-	// 检查搜索结果
-	if len(sr.Entries) == 0 {
-		return fmt.Errorf("未找到用户")
-	}
-
-	// 获取用户的 DN
-	userDN := sr.Entries[0].DN
 	// 创建修改请求
 	modifyRequest := ldap.NewModifyRequest(userDN, nil)
 	if len(values) > 0 {
 		if attrName == "title" {
-			// 只有当 attrName 为 "title" 时，才附加 config.GroupOU 和 config.LDAPBaseDN
+			// 只有当 attrName 为 "title" 时，才附加GroupOU 和LDAPBaseDN
 			for i := range values {
 				values[i] = fmt.Sprintf("cn=%s,%s,%s", values[i], config.GroupOU, config.LDAPBaseDN)
 			}
@@ -122,36 +114,17 @@ func AddUserattrName(config *conn.Config, username string, attrName string, valu
 }
 
 // AddUserToGroups 将用户添加到指定的组
-func AddUserToGroups(config *conn.Config, username string, groups []string) error {
+func AddUserToGroups(f UserDNFetcher, config *conn.Config, username string, groups []string) error {
 	conn, err := conn.GetLDAPConnection(config)
 	if err != nil {
 		return fmt.Errorf("连接 LDAP 时出错: %v", err)
 	}
 	defer conn.Close()
 
-	// 设置搜索请求以获取用户的 DN
-	searchRequest := ldap.NewSearchRequest(
-		config.LDAPBaseDN, // 搜索的Base DN
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(uid=%s)", username), // 搜索过滤器
-		[]string{"dn"},                    // 只检索 DN
-		nil,
-	)
-
-	// 执行搜索请求
-	sr, err := conn.Search(searchRequest)
+	userDN, err := f.FetchUserDN(conn, username)
 	if err != nil {
-		return fmt.Errorf("搜索用户失败: %v", err)
+		return fmt.Errorf("获取用户 DN 失败: %v", err)
 	}
-
-	// 检查搜索结果
-	if len(sr.Entries) == 0 {
-		return fmt.Errorf("未找到用户")
-	}
-
-	// 获取用户的 DN
-	userDN := sr.Entries[0].DN
-
 	// 将用户添加到每个指定的组
 	for _, group := range groups {
 		groupDN := fmt.Sprintf("cn=%s,%s,%s", group, config.GroupOU, config.LDAPBaseDN)
@@ -264,6 +237,8 @@ func main() {
 		log.Fatalf("加载配置时出错: %v", err)
 	}
 
+	fetcher := &LDAPUserDNFetcher{Config: config}
+
 	// 从命令行参数获取命令和其他信息
 	if len(os.Args) < 2 {
 		printUsage()
@@ -281,7 +256,7 @@ func main() {
 		newPassword := os.Args[3]
 
 		// 修改用户密码
-		if err := ModifyUserPassword(config, username, newPassword); err != nil {
+		if err := ModifyUserPassword(fetcher, config, username, newPassword); err != nil {
 			log.Fatalf("修改用户密码时出错: %v", err)
 		}
 		fmt.Println("用户密码修改成功")
@@ -295,7 +270,7 @@ func main() {
 		values := os.Args[4:]
 
 		// 增加用户attrName或者值
-		if err := AddUserattrName(config, username, attrName, values); err != nil {
+		if err := AddUserattrName(fetcher, config, username, attrName, values); err != nil {
 			log.Fatalf("属性添加出错: %v", err)
 		}
 		fmt.Println("属性添加成功")
@@ -307,7 +282,7 @@ func main() {
 		groups := os.Args[3:]
 
 		// 增加用户到组
-		if err := AddUserToGroups(config, username, groups); err != nil {
+		if err := AddUserToGroups(fetcher, config, username, groups); err != nil {
 			log.Fatalf("将用户添加到组时出错: %v", err)
 		}
 		fmt.Println("用户已成功添加到群组")
