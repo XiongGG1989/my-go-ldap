@@ -1,7 +1,7 @@
 
 ## 配置文件
 
-确保在编译后的执行文件目录中有 `config.json` 文件, 示例内容如下:
+将 `config.json` 文件复制到编译后的二进制文件目录中,修改 `ldap` 相关的配置信息, 示例内容如下:
 ```json
 {
   "ldapBaseDN": "dc=example,dc=com",
